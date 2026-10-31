@@ -1,0 +1,8 @@
+.DS_Store
+template/hanzi/hz.json
+template/fonts/*.ttf
+template/fonts/*.json
+template/voices/*.json
+build/
+*.wav
+*.mp4
