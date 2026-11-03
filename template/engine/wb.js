@@ -224,6 +224,24 @@ export function text(str, x, y, o = {}) {
   return out;
 }
 
+// ───────────────────────── line-art portraits (tools/trace_lineart.py): the pen follows the traced lines, and the original
+// drawing is revealed under them — the picture keeps every detail of the illustration, but it is still drawn stroke by stroke
+export async function loadArt(png, json) {
+  const [img, data] = await Promise.all([fetch(png).then(r => r.blob()).then(b => createImageBitmap(b)), fetch(json).then(r => r.json())]);
+  return { img, data };
+}
+// art strokes for a portrait whose top-centre... placed with its centre at (x, y) and height h; o.reveal = mask width factor
+export function art(A, x, y, h, o = {}) {
+  const d = A.data, sc = h / d.h, x0 = x - d.w * sc / 2, y0 = y - h / 2;
+  const R = { img: A.img, x0, y0, w: d.w * sc, h, strokes: [] };
+  for (const r of d.paths) {
+    const p = r.p.map((v, i) => i % 2 ? y0 + v * sc : x0 + v * sc);
+    const s = new Stroke(p, { w: Math.max(5, (r.w * 1.8 + 4) * sc), jitter: 0, kind: 'art', smooth: 0 });
+    s.art = R; R.strokes.push(s);
+  }
+  return R.strokes;
+}
+
 // ───────────────────────── timeline: pens draw shapes in order
 const flat = a => (Array.isArray(a) ? a.flatMap(flat) : [a]);
 export class Pen {
@@ -388,8 +406,10 @@ export class Board {
         const q = e.path.at(L); ig.lineTo(q[0], q[1]); ig.stroke(); ig.restore();
       }
     };
+    const arts = new Map();
     for (const s of this.tl.strokes) {
       if (s.t0 >= t) continue;
+      if (s.art) { let a = arts.get(s.art); if (!a) arts.set(s.art, a = []); a.push(s); continue; }
       if (s.epoch > ep) flushErasers(s.epoch);
       const b = s.box; if (b[2] < vx0 || b[0] > vx1 || b[3] < vy0 || b[1] > vy1) continue;
       if (s.hide && s.hide(t)) continue;
@@ -402,6 +422,15 @@ export class Board {
       ig.globalAlpha = a; ig.fillStyle = s.color || INK.black; ig.beginPath(); ribbon(ig, s, L, 1); ig.fill();
       if (s.len > 30) { ig.globalAlpha = .3 * a / s.alpha; ig.beginPath(); const [x, y] = s.at(s.w * .5); ig.arc(x, y, s.w * .33, 0, TAU); ig.fill(); }   // pooled ink where the nib landed
       if (s.clip || pop) ig.restore();
+    }
+    for (const [R, list] of arts) {
+      R.t1 ??= Math.max(...R.strokes.map(s => s.t1));
+      const full = t >= R.t1;
+      let a = 1; if (spOn && !(R.grp != null && sp.on.has(R.grp)) && R.t1 < sp.t0) a = 1 - (sp.dim ?? .55) * sp.k;
+      ig.save(); ig.globalAlpha = a;
+      if (spOn && R.grp != null && sp.on.has(R.grp) && sp.pop) { const cx = R.x0 + R.w / 2, cy = R.y0 + R.h / 2; ig.translate(cx, cy); ig.scale(1 + sp.pop, 1 + sp.pop); ig.translate(-cx, -cy); }
+      if (!full) { ig.beginPath(); for (const s of list) ribbon(ig, s, s.prog(t) * s.len, 1); ig.clip(); }
+      ig.drawImage(R.img, R.x0, R.y0, R.w, R.h); ig.restore();
     }
     flushErasers(E.length);
     ig.globalAlpha = 1;
