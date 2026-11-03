@@ -51,7 +51,9 @@ export function withLooks(CK, looks, o = {}) {
 // Looks from the narration: consecutive lines are merged while the box around what they draw still lets the camera move in
 // by ≥ minGain; a chapter (a line with sec / board) always closes the look a little early, so the whole board shows for a
 // breath before the next part. skip(stroke) leaves out strokes that shouldn't steer the camera (the header, the opening).
-export function chapterLooks({ tl, lines, VO, vend, base, panel, skip = () => false, minGain = 1.2, zmax = 1.6, from = 0, minDur = 3 }) {
+// 2026-11-03 user: keep the normal scale; the camera only tours when the board doesn't fit one screen. So looks are made only
+// where the base camera shows the board shrunk (z < 1), and they move in no further than the normal scale (zmax 1).
+export function chapterLooks({ tl, lines, VO, vend, base, panel, skip = () => false, minGain = 1.2, zmax = 1, from = 0, minDur = 3 }) {
   const cam = new W.Camera(base), looks = [], U = (a, b) => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
   const segs = lines.map((l, i) => {
     const t0 = VO[l.id], nx = lines[i + 1], t1 = nx ? VO[nx.id] - .3 : vend(l.id) + .5;
@@ -84,6 +86,7 @@ export function chapterLooks({ tl, lines, VO, vend, base, panel, skip = () => fa
   for (const g of segs) {
     if (g.l.sec || g.l.board) close(true);
     const b = cam.at(g.t0), pn = panel(b);
+    if (b.z >= zmax * .99) { close(false); continue; }   // the board already shows at the normal scale: no tour
     if (!cur) { if (!g.box) continue; const v = fitView(g.box, { zmax, clamp: pn }); if (v.z >= b.z * minGain) cur = { ...g, S: [...g.S], v }; continue; }
     const box = g.box ? U(cur.box, g.box) : cur.box, v = fitView(box, { zmax, clamp: pn });
     if (v.z >= b.z * minGain) Object.assign(cur, { box, v, t1: g.t1, end: g.end, S: cur.S.concat(g.S) });
