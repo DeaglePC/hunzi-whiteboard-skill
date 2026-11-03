@@ -1,7 +1,7 @@
 // Phone readability check: node tools/phonecheck.mjs <src> [--min 30] [--shot 20] [--ocr]
 //   geometry (always): every board label's best on-screen size, the final screenshot frame, overlaps, lines through labels, safe area
 //   --ocr: also renders the key stills at phone-ish size (540 wide) and asks macOS Vision which labels it can still read
-// Writes build/phonecheck.json. Exit code 1 when there are 'small' / 'overlap' / 'crossed' / 'unsafe' issues (a 'shot' alone is a warning).
+// Writes build/phonecheck.json. Exit code 1 when there are 'small' / 'overlap' / 'crossed' / 'unsafe' / 'onfig' issues (a 'shot' alone is a warning).
 import fs from 'fs'; import path from 'path'; import { execFileSync } from 'child_process'; import { fileURLToPath } from 'url';
 const LIB = process.env.LIB || process.env.HOME + '/lemo-opuscar';
 const { openDemo, closeServer } = await import(LIB + '/core/render/page.mjs');
@@ -29,7 +29,7 @@ if (args.includes('--ocr')) {
 }
 await browser.close(); closeServer();
 fs.mkdirSync(B, { recursive: true }); fs.writeFileSync(path.join(B, 'phonecheck.json'), JSON.stringify({ ...res, ocr }, null, 1));
-const S = res.summary, NAME = { small: '太小（全片最大时 < ' + MIN + 'px）', shot: '结尾截图里 < ' + SHOT + 'px', overlap: '标签互相重叠', crossed: '线穿过标签', unsafe: '画的时候在安全区外' };
+const S = res.summary, NAME = { small: '太小（全片最大时 < ' + MIN + 'px）', shot: '结尾截图里 < ' + SHOT + 'px', overlap: '标签互相重叠', crossed: '线穿过标签', unsafe: '画的时候在安全区外', onfig: '字写在人物身上' };
 console.log(`phonecheck: ${res.labels} 个标签`);
 for (const k of Object.keys(NAME)) {
   const L = res.issues.filter(i => i.kind === k); if (!L.length) { console.log(`  ✓ ${NAME[k]}: 0`); continue; }
@@ -38,4 +38,4 @@ for (const k of Object.keys(NAME)) {
   if (L.length > 12) console.log(`     …还有 ${L.length - 12} 条，见 build/phonecheck.json`);
 }
 if (ocr) for (const o of ocr) console.log(`  OCR ${o.still} @${o.t.toFixed(1)}s（540 宽）: ${o.labels - o.unread}/${o.labels} 认得出` + (o.missed.length ? '；认不出：' + o.missed.slice(0, 10).join('、') : ''));
-process.exit(S.small + S.overlap + S.crossed + S.unsafe ? 1 : 0);
+process.exit(S.small + S.overlap + S.crossed + S.unsafe + S.onfig ? 1 : 0);

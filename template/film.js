@@ -225,12 +225,14 @@ export async function build() {
   const sys = (str, x, y, t0, t1, h = 34) => { const tx = hz(str, x, y, { h, color: C.gray, align: 'center', w: h * .09 }); const w = tx.width + h * 1.1; return D(S, [W.roundRect(x - w / 2, y - h * .85, w, h * 1.7, h * .85, { w: 4, alpha: .7 }), ...tx], t0, t1, 'sys'); };
   const ellipse = (cx, cy, rx, ry, o = {}) => W.circle(cx, cy, rx, { ry, ...o });
   const ringPath = (cx, cy, rx, ry) => { const p = []; for (let i = 0; i <= 72; i++) { const a = -2.2 + i / 72 * (TAU + .3); p.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return p; };
-  let kt = 0; const FIGS = {};
+  // every person on the board: FIGS[name] = all their strokes (any board), FIGLIST = one entry per drawing (for the phone check)
+  let kt = 0; const FIGS = {}, FIGLIST = [];
+  const addFig = (name, strokes) => { (FIGS[name] ??= []).push(...strokes); FIGLIST.push({ g: name, S: strokes }); };
   const F = (name, x, y, o, t0, t1) => {
     const f = fig(x, y, { r: 42, ...o }), pn = [K, K2, K3][kt++ % 3];
     const all = [...f.L, ...(f.fill ? [f.fill] : []), ...(name ? txt(name, x, y + f.r * 3.2, o.nh ?? 40, o.ncol ?? C.k) : [])];
     D(pn, all, t0, t1, 'fig', name || undefined);
-    if (name) (FIGS[name] ??= []).push(...all);
+    if (name) addFig(name, all);
     return { x, y, r: f.r };
   };
   const bubble = (s, x, y, h, t0, t1, col = C.k, tail = [-1, 1]) => { const tx = txt(s, x, y, h, col); const w = tx.width + h * .9, hh = h * 1.65; return D(KX(), [W.roundRect(x - w / 2, y - hh / 2, w, hh, h * .5, { w: 4 }), W.poly([x + tail[0] * w * .2, y + hh / 2, x + tail[0] * w * .2 + tail[1] * 18, y + hh / 2 + 32, x + tail[0] * w * .2 + 28, y + hh / 2], { w: 4 }), ...tx], t0, t1, 'bubble'); };
@@ -476,7 +478,8 @@ export async function build() {
   const cam = new W.Camera(LOOKS.length ? TOUR.withLooks(CK, LOOKS) : CK);
   const GROUPS = {}, DRAWN = {};
   for (const [g, S] of Object.entries(FIGS)) { GROUPS[g] = S.reduce((b, s) => [Math.min(b[0], s.box[0]), Math.min(b[1], s.box[1]), Math.max(b[2], s.box[2]), Math.max(b[3], s.box[3])], [1e9, 1e9, -1e9, -1e9]); DRAWN[g] = Math.max(...S.map(s => s.t1)); }
-  const SPOTS = Q0.has('nospot') ? [] : TOUR.autoSpots({ lines, at, groups: GROUPS, drawnAt: DRAWN, from: VO[TOUR_FROM] });
+  // spotlight is off (2026-11-03 user: no brightness changes); ?spot=1 only for experiments
+  const SPOTS = !Q0.has('spot') ? [] : TOUR.autoSpots({ lines, at, groups: GROUPS, drawnAt: DRAWN, from: VO[TOUR_FROM] });
   for (const [t, d] of [[b2 - .9, .9], [b3 - .9, .9], [tOver, 1.2]]) tl.ev.push({ t: +(t + .1).toFixed(3), type: 'whip', dur: d });
   tl.ev.sort((a, b) => a.t - b.t);
 
@@ -542,7 +545,7 @@ export async function build() {
   window.__LABELS = LT2; window.__ONSCREEN = t => TOUR.onScreen(LT2, cam, t);
   window.__LOOKS = LOOKS.map(l => [+l.t0.toFixed(1), +l.t1.toFixed(1), +(l.v || l.view).z.toFixed(2), l.chapter]); window.__SPOTS = SPOTS.map(w => [+w.t0.toFixed(1), +w.t1.toFixed(1), [...w.on].join('、')]);
   window.__KEYTIMES = [['b1', VO[first(2)] - 2.3], ['b2', VO[first(3)] - 2.3], ['b3', END - OVERVIEW - 1.2], ['all', END - .3]];
-  window.__PHONECHECK = o => TOUR.phoneCheck({ labels: LT2, tl, cam, END, ...o });
+  window.__PHONECHECK = o => TOUR.phoneCheck({ labels: LT2, tl, cam, END, figs: FIGLIST, ...o });
   window.__LAG = LAG;
   window.__T = { VO, END, impact: tFei + .2, SEC: [...SEC].map(id => VO[id]) };
   return { dur: END, render, ev, subs, cam, tl, VO, at };

@@ -129,7 +129,7 @@ export function spotlight(windows, boxes, o = {}) {
 export function labelTable(labels) {
   return labels.filter(l => l.strokes.length && l.strokes[0].t0 < 1e8).map((l, i) => {
     const S = l.strokes, box = S.reduce((b, s) => [Math.min(b[0], s.box[0]), Math.min(b[1], s.box[1]), Math.max(b[2], s.box[2]), Math.max(b[3], s.box[3])], [1e9, 1e9, -1e9, -1e9]);
-    return { i, text: l.text, h: l.h, tag: l.tag || S[0].tag || '', job: S[0].job, box, t0: Math.min(...S.map(s => s.t0)), t1: Math.max(...S.map(s => s.t1)) };
+    return { i, text: l.text, h: l.h, tag: l.tag || S[0].tag || '', strokes0grp: S[0].grp, job: S[0].job, box, t0: Math.min(...S.map(s => s.t0)), t1: Math.max(...S.map(s => s.t1)) };
   });
 }
 
@@ -139,7 +139,8 @@ export function labelTable(labels) {
 //   overlap — two labels from different drawing jobs overlap
 //   crossed — a line from another job runs through the label
 //   unsafe  — when it is drawn, the label is outside the safe area (x 140–940, y 360–1350)
-export function phoneCheck({ labels, tl, cam, END, minPx = 30, shotPx = 20, skipTags = ['header'], shotT }) {
+//   onfig   — a label written on top of a person (other than that person's own name)
+export function phoneCheck({ labels, tl, cam, END, figs = [], minPx = 30, shotPx = 20, skipTags = ['header'], shotT }) {
   const T = labels, S = tl.strokes, E = tl.erasers, issues = [];
   const inBox = (x, y, b, m = 0) => x > b[0] - m && x < b[2] + m && y > b[1] - m && y < b[3] + m;
   const shrink = (b, f) => { const dx = (b[2] - b[0]) * f, dy = (b[3] - b[1]) * f; return [b[0] + dx, b[1] + dy, b[2] - dx, b[3] - dy]; };
@@ -178,8 +179,20 @@ export function phoneCheck({ labels, tl, cam, END, minPx = 30, shotPx = 20, skip
     }
     if (hit.size) issues.push({ kind: 'crossed', text: l.text, by: [...hit.keys()].join(','), t: +l.t1.toFixed(1) });
   }
+  // onfig — writing on top of a person (2026-11-03 user: text must stay clear of the figures); the person's own name is exempt
+  for (const l of T) {
+    const own = l.strokes0grp, B = shrink(l.box, .08);
+    for (const f of figs) {
+      if (f.g === own || l.job === f.S[0].job) continue;
+      f.box ??= f.S.reduce((b, s) => [Math.min(b[0], s.box[0]), Math.min(b[1], s.box[1]), Math.max(b[2], s.box[2]), Math.max(b[3], s.box[3])], [1e9, 1e9, -1e9, -1e9]);
+      f.t ??= Math.max(...f.S.map(s => s.t1)); f.gone ??= Math.min(END, erasedAt(shrink(f.box, .3), f.t));
+      if (f.t > l.gone || l.t1 > f.gone) continue;
+      const F = shrink(f.box, .04);
+      if (B[0] < F[2] && F[0] < B[2] && B[1] < F[3] && F[1] < B[3]) issues.push({ kind: 'onfig', text: l.text, other: f.g, t: +Math.max(l.t1, f.t).toFixed(1) });
+    }
+  }
   const count = k => issues.filter(i => i.kind === k).length;
-  return { labels: T.length, minPx, shotPx, summary: Object.fromEntries(['small', 'shot', 'overlap', 'crossed', 'unsafe'].map(k => [k, count(k)])), issues, best: T.map(l => [l.text, l.best]) };
+  return { labels: T.length, minPx, shotPx, summary: Object.fromEntries(['small', 'shot', 'overlap', 'crossed', 'unsafe', 'onfig'].map(k => [k, count(k)])), issues, best: T.map(l => [l.text, l.best]) };
 }
 
 // labels fully on screen at t (drawn, not erased) — what a viewer could read in that frame
