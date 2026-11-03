@@ -19,7 +19,10 @@ def opt(k, d):
 src, out = args[0], args[1]
 H, MINLEN = opt('--height', 1000), opt('--min-len', 6)
 
-img = Image.open(src).convert('L')
+img = Image.open(src)
+if 'A' in img.getbands() or img.mode == 'P':   # transparent background (Codex often returns RGBA) → white paper
+    _bg = Image.new('RGBA', img.size, (255, 255, 255, 255)); _bg.alpha_composite(img.convert('RGBA')); img = _bg
+img = img.convert('L')
 # crop to the drawing, then scale to the working height
 a = np.asarray(img); ink = a < 140
 ys, xs = np.nonzero(ink); pad = 8
