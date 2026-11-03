@@ -2,6 +2,7 @@
 // Every regime is a "group chat": a marker circle + name; members are glossy face magnets.
 // Board text is Chinese written in real stroke order (hanzi-writer-data medians), latin/digits in EMS Tech.
 import * as W from './engine/wb.js';
+import * as TOUR from './engine/tour.js';
 import { clamp, lerp, TAU, mulberry, hash } from '/core/lib.js';
 
 export const C = {
@@ -191,6 +192,8 @@ export async function build() {
   const HOLD_END = 2.6, OVERVIEW = 3.4;
   const END = vend(lines[lines.length - 1].id) + HOLD_END + OVERVIEW;
 
+  // the tour and the spotlight start with the first chapter after the opening
+  const Q0 = new URLSearchParams(location.search), TOUR_FROM = (lines.find((l, i) => i > 0 && l.sec) || lines[0]).id;
   const tl = new W.Timeline();
   const pen = (id, col, park) => new W.Pen(id, col, { park });
   const K = pen('k', C.k, [1300, 1500]), K2 = pen('k2', C.k, [1250, 1650]), B = pen('b', C.blue, [1350, 1400]), G = pen('g', C.green, [1300, 1750]),
@@ -201,7 +204,7 @@ export async function build() {
   const PC = { [C.blue]: B, [C.green]: G, [C.red]: Rr, [C.purple]: P, [C.orange]: O, [C.gold]: Y, [C.k]: K2 };
   // one hand on the board: jobs are sorted by start time and run one after another; a late job is drawn faster to catch up
   const JOBS = [], LAG = [];
-  const D = (pn, shapes, t0, t1, tag) => { JOBS.push({ pn, shapes, t0, t1, tag, k: JOBS.length }); };
+  const D = (pn, shapes, t0, t1, tag, grp) => { const k = JOBS.length; for (const s of [shapes].flat(9)) { s.job = k; s.tag = tag; if (grp != null) s.grp = grp; } JOBS.push({ pn, shapes, t0, t1, tag, k }); };
   const runJobs = () => {
     let HAND = -1e9;
     JOBS.sort((a, b) => a.t0 - b.t0 || a.k - b.k);
@@ -217,14 +220,17 @@ export async function build() {
   const slide = (m, t0, t1, x, y, o = {}) => { const x0 = m.x, y0 = m.y; m.key(t0, x0, y0); m.key((t0 + t1) / 2, (x0 + x) / 2, (y0 + y) / 2 - (o.arc ?? 0), { lift: o.lift ?? .6, s: 1.1 }); m.key(t1, x, y); tl.cue(t0, 'slide', { x: x0, y: y0, dur: t1 - t0 }); tl.cue(t1, 'clack', { x, y }); };
   const drop = (m, t, x, y) => { m.key(t - .42, x + 30, y - 70, { lift: 1, s: 1.2, vis: 0 }); m.key(t - .36, x + 26, y - 60, { lift: 1, s: 1.18 }); m.key(t, x, y, { e: 'i' }); tl.cue(t, 'clack', { x, y }); };
   const kick = (m, t0, dx, dy, o = {}) => { const x0 = m.x, y0 = m.y, dur = o.dur ?? .75, spin = o.spin ?? 7; m.key(t0, x0, y0, { face: 'x' }); for (let i = 1; i <= 6; i++) { const u = i / 6; m.key(t0 + dur * u, x0 + dx * u, y0 + dy * u - Math.sin(Math.PI * u * .8) * 200, { lift: 1, s: 1 + u * .5, rot: spin * u, vis: i === 6 ? 0 : 1, e: 'l' }); } tl.cue(t0, 'kick', { x: x0, y: y0 }); };
-  const txt = (s, x, y, h, col, o = {}) => hz(s, x, y, { h, color: col, align: o.align ?? 'center', ...o });
+  const LABELS = [];
+  const txt = (s, x, y, h, col, o = {}) => { const tx = hz(s, x, y, { h, color: col, align: o.align ?? 'center', ...o }); LABELS.push({ text: s, h, strokes: tx, tag: o.tag }); return tx; };
   const sys = (str, x, y, t0, t1, h = 34) => { const tx = hz(str, x, y, { h, color: C.gray, align: 'center', w: h * .09 }); const w = tx.width + h * 1.1; return D(S, [W.roundRect(x - w / 2, y - h * .85, w, h * 1.7, h * .85, { w: 4, alpha: .7 }), ...tx], t0, t1, 'sys'); };
   const ellipse = (cx, cy, rx, ry, o = {}) => W.circle(cx, cy, rx, { ry, ...o });
   const ringPath = (cx, cy, rx, ry) => { const p = []; for (let i = 0; i <= 72; i++) { const a = -2.2 + i / 72 * (TAU + .3); p.push([cx + Math.cos(a) * rx, cy + Math.sin(a) * ry]); } return p; };
-  let kt = 0;
+  let kt = 0; const FIGS = {};
   const F = (name, x, y, o, t0, t1) => {
     const f = fig(x, y, { r: 42, ...o }), pn = [K, K2, K3][kt++ % 3];
-    D(pn, [...f.L, ...(f.fill ? [f.fill] : []), ...(name ? txt(name, x, y + f.r * 3.2, o.nh ?? 40, o.ncol ?? C.k) : [])], t0, t1, 'fig');
+    const all = [...f.L, ...(f.fill ? [f.fill] : []), ...(name ? txt(name, x, y + f.r * 3.2, o.nh ?? 40, o.ncol ?? C.k) : [])];
+    D(pn, all, t0, t1, 'fig', name || undefined);
+    if (name) (FIGS[name] ??= []).push(...all);
     return { x, y, r: f.r };
   };
   const bubble = (s, x, y, h, t0, t1, col = C.k, tail = [-1, 1]) => { const tx = txt(s, x, y, h, col); const w = tx.width + h * .9, hh = h * 1.65; return D(KX(), [W.roundRect(x - w / 2, y - hh / 2, w, hh, h * .5, { w: 4 }), W.poly([x + tail[0] * w * .2, y + hh / 2, x + tail[0] * w * .2 + tail[1] * 18, y + hh / 2 + 32, x + tail[0] * w * .2 + 28, y + hh / 2], { w: 4 }), ...tx], t0, t1, 'bubble'); };
@@ -463,12 +469,20 @@ export async function build() {
     [b3 - .9, X(1) + 540, CY, Z * 1.01, 0, 'l'], [b3, X(2) + 540, CY, Z],
     [tOver, X(2) + 540, CY, Z * 1.01, 0, 'l'], [tOver + 1.2, BOARD_W / 2, CY, 1080 / BOARD_W * .98], [END, BOARD_W / 2, CY, 1080 / BOARD_W * .98, 0, 'l'],
   ];
-  const cam = new W.Camera(CK);
+  // ───────── code-only tricks (engine/tour.js): the camera goes to the part being explained and back to the whole board;
+  // the person the narration names lights up. ?notour=1 / ?nospot=1 turn them off (for comparisons).
+  const panel = c => { const k = Math.round((c.x - 540) / (PW + GAP)); return [X(k), 0, X(k) + PW, BOARD_H]; };
+  const LOOKS = Q0.has('notour') ? [] : TOUR.chapterLooks({ tl, lines, VO, vend, base: CK, panel, from: VO[TOUR_FROM], skip: s => s.tag === 'header' });
+  const cam = new W.Camera(LOOKS.length ? TOUR.withLooks(CK, LOOKS) : CK);
+  const GROUPS = {}, DRAWN = {};
+  for (const [g, S] of Object.entries(FIGS)) { GROUPS[g] = S.reduce((b, s) => [Math.min(b[0], s.box[0]), Math.min(b[1], s.box[1]), Math.max(b[2], s.box[2]), Math.max(b[3], s.box[3])], [1e9, 1e9, -1e9, -1e9]); DRAWN[g] = Math.max(...S.map(s => s.t1)); }
+  const SPOTS = Q0.has('nospot') ? [] : TOUR.autoSpots({ lines, at, groups: GROUPS, drawnAt: DRAWN, from: VO[TOUR_FROM] });
   for (const [t, d] of [[b2 - .9, .9], [b3 - .9, .9], [tOver, 1.2]]) tl.ev.push({ t: +(t + .1).toFixed(3), type: 'whip', dur: d });
   tl.ev.sort((a, b) => a.t - b.t);
 
   const pose = (p, t) => W.penPose(p, t, cam);
   const board = new W.Board(tl, { ghosts, W: BOARD_W, H: BOARD_H });
+  if (SPOTS.length) board.spot = TOUR.spotlight(SPOTS, GROUPS);
   board.objs.push({ draw: (ctx, t, c) => { for (const m of mags) (m.draw || drawMag)(ctx, m, t, c); } });
   board.objs.push({ draw: (ctx, t, c) => { for (const e of tl.erasers) W.drawEraser(ctx, e, t, c); } });
   const Q = new URLSearchParams(location.search);
@@ -523,6 +537,12 @@ export async function build() {
 
   const ev = [...tl.ev, ...Object.entries(VO).map(([id, t]) => ({ t, type: 'vo', id }))].sort((a, b) => a.t - b.t);
   for (const e of ev) if (e.x != null) { const c = cam.at(Math.max(0, e.t)), [px, py] = W.toScreen(c, e.x, e.y); e.pan = +clamp((px - 540) / 900, -.7, .7).toFixed(2); e.z = +c.z.toFixed(2); e.on = px > -100 && px < 1180 && py > -100 && py < 2020 ? 1 : 0; }
+  // phone check (tools/phonecheck.mjs): every label, what's on screen at t, the key stills
+  const LT2 = TOUR.labelTable(LABELS);
+  window.__LABELS = LT2; window.__ONSCREEN = t => TOUR.onScreen(LT2, cam, t);
+  window.__LOOKS = LOOKS.map(l => [+l.t0.toFixed(1), +l.t1.toFixed(1), +(l.v || l.view).z.toFixed(2), l.chapter]); window.__SPOTS = SPOTS.map(w => [+w.t0.toFixed(1), +w.t1.toFixed(1), [...w.on].join('、')]);
+  window.__KEYTIMES = [['b1', VO[first(2)] - 2.3], ['b2', VO[first(3)] - 2.3], ['b3', END - OVERVIEW - 1.2], ['all', END - .3]];
+  window.__PHONECHECK = o => TOUR.phoneCheck({ labels: LT2, tl, cam, END, ...o });
   window.__LAG = LAG;
   window.__T = { VO, END, impact: tFei + .2, SEC: [...SEC].map(id => VO[id]) };
   return { dur: END, render, ev, subs, cam, tl, VO, at };

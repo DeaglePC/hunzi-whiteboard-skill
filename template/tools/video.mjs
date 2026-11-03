@@ -1,4 +1,4 @@
-// Render video: node core/render/video.mjs <demo> [--fps 24] [--workers 3] [--q 'k=v'] [--out <demo>/out/video.mp4] [--size 1920x1080]
+// Render video: node core/render/video.mjs <demo> [--from s] [--to s] [--fps 24] [--workers 3] [--q 'k=v'] [--out <demo>/out/video.mp4] [--size 1920x1080]
 // when several films are in production in parallel, use 3 workers (the default); a render on its own can go up to 6
 // each worker has its own browser; JPEG screenshots are piped to ffmpeg; the segments are joined losslessly at the end
 // with the environment variable RENDER_SLOTS (an integer) set, the machine runs at most that many full-film renders at once (slot.mjs); unset means no limit. Segment files go in a hidden directory next to --out, unique to each render, deleted when the render finishes (or fails, or is interrupted).
@@ -8,7 +8,7 @@ import fs from 'fs'; import path from 'path'; import { spawn, execFileSync } fro
 const { openDemo, closeServer, requireDemo, takeSize } = await import((process.env.LIB || process.env.HOME + '/lemo-opuscar') + '/core/render/page.mjs');
 const args = process.argv.slice(2), { w: W, h: H } = takeSize(args), opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const dir = args[0]; requireDemo(dir);
-const FPS = +opt('--fps', 24), WK = +opt('--workers', 3), Q = opt('--q', '');
+const FPS = +opt('--fps', 24), WK = +opt('--workers', 3), Q = opt('--q', ''), FROM = +opt('--from', 0), TO = +opt('--to', Infinity);   // --from/--to: render only a stretch (samples)
 if (!(FPS > 0) || !Number.isInteger(WK) || WK < 1) { console.error('bad --fps / --workers: fps must be > 0, workers an integer ≥ 1'); process.exit(2); }
 const out = path.resolve(opt('--out', path.join(dir, 'out', 'video.mp4')));
 const outDir = path.dirname(out), base = path.basename(out, path.extname(out));
@@ -40,7 +40,7 @@ const release = process.env.RENDER_SLOTS ? await (await import('./slot.mjs')).ac
 segDir = fs.mkdtempSync(path.join(outDir, `.${base}_segs-`)); fs.writeFileSync(path.join(segDir, 'pid'), String(process.pid));
 const probe = await openDemo(dir, { w: W, h: H, q: Q }); const DUR = await probe.page.evaluate(() => window.DUR); await probe.browser.close();
 if (!(DUR > 0)) fail(`window.DUR must be a positive number of seconds (got ${DUR})`);
-const TOTAL = Math.round(DUR * FPS), per = Math.ceil(TOTAL / WK), t0 = Date.now();
+const F0 = Math.round(FROM * FPS), TOTAL = Math.round(Math.min(TO, DUR) * FPS) - F0, per = Math.ceil(TOTAL / WK), t0 = Date.now();
 try { await Promise.all([...Array(WK)].map(async (_, w) => {
   const a = w * per, b = Math.min(TOTAL, a + per); if (a >= b) return;
   const { browser, page } = await openDemo(dir, { w: W, h: H, q: Q });
@@ -53,7 +53,7 @@ try { await Promise.all([...Array(WK)].map(async (_, w) => {
   ff.on('error', e => { dead = e.code === 'ENOENT' ? 'ffmpeg is not installed (or not on PATH)' : e.message; done(-1); });
   ff.stdin.on('error', () => { dead ??= 'ffmpeg closed its input early'; });
   for (let f = a; f < b && !dead; f++) {
-    await page.evaluate(t => window.render(t), f / FPS);
+    await page.evaluate(t => window.render(t), (F0 + f) / FPS);
     const buf = await page.screenshot({ type: 'jpeg', quality: 95 });
     if (dead) break;
     if (!ff.stdin.write(buf)) await Promise.race([new Promise(r => ff.stdin.once('drain', r)), closed]);

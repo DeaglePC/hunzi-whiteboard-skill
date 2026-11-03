@@ -347,6 +347,7 @@ export class Board {
     this.nt = noiseTile(7); this.bt = boardTile(11);
     this.objs = [];                                 // {draw(ctx, t, cam)} in world, drawn after ink
     this.overlays = [];                             // {draw(ctx, t, cam)} in screen space
+    this.spot = null;                               // t → {on:Set(grp), k:0..1, t0, dim, box:{grp:[x0,y0,x1,y1]}} | null  (see tour.js)
   }
   render(ctx, t, cam) {
     const c = cam.at(t), W = this.W, H = this.H;
@@ -368,6 +369,15 @@ export class Board {
     const ig = this.ig; ig.setTransform(1, 0, 0, 1, 0, 0); ig.clearRect(0, 0, VIEW.w, VIEW.h); applyCam(ig, c);
     const vw = Math.max(VIEW.w, VIEW.h) * .73 / c.z, vx0 = c.x - vw, vx1 = c.x + vw, vy0 = c.y - vw, vy1 = c.y + vw;
     const E = this.tl.erasers; let ep = 0;
+    // spotlight: the groups being talked about get a soft highlighter glow and a small pop; finished ink elsewhere fades back
+    const sp = this.spot ? this.spot(t) : null, spOn = sp && sp.k > .001;
+    if (spOn) for (const g of sp.on) {
+      const b = sp.box[g]; if (!b) continue;
+      const cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2, rx = (b[2] - b[0]) / 2 + 26, ry = (b[3] - b[1]) / 2 + 22;
+      ig.save(); ig.translate(cx, cy); ig.scale(1, ry / rx);
+      const hg = ig.createRadialGradient(0, 0, rx * .2, 0, 0, rx); hg.addColorStop(0, `rgba(255,214,80,${.30 * sp.k})`); hg.addColorStop(.75, `rgba(255,214,80,${.18 * sp.k})`); hg.addColorStop(1, 'rgba(255,214,80,0)');
+      ig.fillStyle = hg; ig.beginPath(); ig.arc(0, 0, rx, 0, TAU); ig.fill(); ig.restore();
+    }
     const flushErasers = upto => {
       while (ep < upto) {
         const e = E[ep++]; if (t <= e.t0) continue;
@@ -384,10 +394,14 @@ export class Board {
       const b = s.box; if (b[2] < vx0 || b[0] > vx1 || b[3] < vy0 || b[1] > vy1) continue;
       if (s.hide && s.hide(t)) continue;
       const L = s.prog(t) * s.len;
-      if (s.clip) { ig.save(); ig.beginPath(); ig.roundRect(...s.clip); ig.clip(); }
-      ig.globalAlpha = s.alpha; ig.fillStyle = s.color || INK.black; ig.beginPath(); ribbon(ig, s, L, 1); ig.fill();
-      if (s.len > 30) { ig.globalAlpha = .3; ig.beginPath(); const [x, y] = s.at(s.w * .5); ig.arc(x, y, s.w * .33, 0, TAU); ig.fill(); }   // pooled ink where the nib landed
-      if (s.clip) ig.restore();
+      let a = s.alpha, pop = 0;
+      if (spOn) { if (s.grp != null && sp.on.has(s.grp)) pop = sp.pop ?? 0; else if (s.t1 < sp.t0) a *= 1 - (sp.dim ?? .55) * sp.k; }
+      if (s.clip || pop) ig.save();
+      if (pop) { const b = sp.box[s.grp], cx = (b[0] + b[2]) / 2, cy = (b[1] + b[3]) / 2; ig.translate(cx, cy); ig.scale(1 + pop, 1 + pop); ig.translate(-cx, -cy); }
+      if (s.clip) { ig.beginPath(); ig.roundRect(...s.clip); ig.clip(); }
+      ig.globalAlpha = a; ig.fillStyle = s.color || INK.black; ig.beginPath(); ribbon(ig, s, L, 1); ig.fill();
+      if (s.len > 30) { ig.globalAlpha = .3 * a / s.alpha; ig.beginPath(); const [x, y] = s.at(s.w * .5); ig.arc(x, y, s.w * .33, 0, TAU); ig.fill(); }   // pooled ink where the nib landed
+      if (s.clip || pop) ig.restore();
     }
     flushErasers(E.length);
     ig.globalAlpha = 1;

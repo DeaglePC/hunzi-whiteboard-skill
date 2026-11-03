@@ -19,6 +19,7 @@ if [ -f "$AV" ]; then VF="[2:v]scale=100:100,format=rgba,colorchannelmixer=aa=0.
 cd $P && ffmpeg -y -loglevel error -i build/video30.mp4 -i build/mix.wav $IN -filter_complex "${VF}[1:a]loudnorm=I=-14:TP=-2:LRA=11,aresample=48000[a]" -map "[v]" -map "[a]" -c:v libx264 -crf 19 -preset medium -pix_fmt yuv420p -r 30 -c:a aac -b:a 192k -movflags +faststart -shortest "deliverables/$N.mp4"
 cd $LIB && node $SRC/tools/subs.mjs && .venv/bin/python core/render/srt.py $P/build/subs.json "$P/deliverables/$N.srt"
 cd $LIB && for k in hook b1 b2 b3 all; do t=$(python3 $SRC/times.py $k); node core/render/still.mjs $SRC $t --size $SZ --q 'nosubs=1&nopens=1' --prefix "${k}_" --out $P/build/stills >/dev/null; cp "$P/build/stills/${k}_$t.jpg" "$P/build/stills/$k.jpg"; done
+cd $LIB && (node $SRC/tools/phonecheck.mjs $SRC --ocr || echo "phonecheck: 有问题，详见 build/phonecheck.json（不阻断出片，交付前处理）")   # phone readability
 cd $R && .venv/bin/python $SRC/cards.py
 cd $P/deliverables && rm -f "${N}_全套.zip" && zip -qr "${N}_全套.zip" . -x "*.zip"
 echo built "$P/deliverables/$N.mp4"
