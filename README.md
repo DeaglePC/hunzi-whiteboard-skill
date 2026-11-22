@@ -2,6 +2,14 @@
 
 一个 Claude Code skill：做像《混子哥边画边讲》那样的竖屏白板手绘讲解视频。一块固定白板，用 Q 版人物、关系箭头和小故事，把一段历史、一组人物关系或一类文化清单讲清楚，画完的整块板就是一张能截图收藏的知识图。
 
+## 样例视频
+
+《一口气理清魏晋南北朝与五胡十六国》（对应 [`examples/wei-jin/`](examples/wei-jin/) 源码，完整 5 分 18 秒，建议开声观看；1080p 原画亦可在 [YouTube](https://youtu.be/5K7_w8HyJ8Y) 观看）：
+
+https://github.com/user-attachments/assets/2f12db52-493e-4626-8953-38eb34922c84
+
+## 目录结构
+
 - `SKILL.md`：方法、硬规格、工作流、检查清单（skill 入口）
 - `references/hunzi-study.md`：混子哥播放量前 10 的视频拆解（结构、开场和结尾套路、语速、版面、我们没有真人出镜时怎么移植）
 - `references/lessons-wei-jin.md`：《一口气理清魏晋南北朝与五胡十六国》8 版迭代的反馈和技术坑
